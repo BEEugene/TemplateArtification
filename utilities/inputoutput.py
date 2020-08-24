@@ -1,6 +1,8 @@
 import logging
-
+import numpy as np
 import cv2
+
+from utilities.filesystem import PathSupport
 
 
 class IO:
@@ -35,9 +37,10 @@ class IO:
 
     @classmethod
     def write(cls, image, impath, jpg_quality=None, flag=-1):
+        # print("impath.encode(\"utf-8\")", impath.encode("utf-8"))
+        ext = PathSupport.takeext(impath)[0]
         try:
-            # print("impath.encode(\"utf-8\")", impath.encode("utf-8"))
-            ext = PathSupport.takeext(impath)[0]
+
             impath.encode("latin1") # test if there unicde in the path
             if jpg_quality and ext.lower() == ".jpg":
                 result = cv2.imwrite(impath, image, [int(cv2.IMWRITE_JPEG_QUALITY), jpg_quality])
@@ -54,7 +57,11 @@ class IO:
             # print("impath",impath)
             im_buf_arr.tofile(impath)
         print("saved to", impath)
-        if not os.path.isfile(impath):
+        if not cv2.os.path.isfile(impath):
+            cv2.imshow('res', image)
+            cv2.waitKey()
+            cv2.destroyAllWindows()
             result = None
+
         assert not isinstance(result, type(None)), ("Image is {im} check the path {path}".format(im=image, path=impath))
         return result

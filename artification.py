@@ -3,12 +3,16 @@ import os
 import random
 import shutil
 
+import imutils
+import numpy as np
 import cv2
 from tqdm import tqdm
 
 from augmentationoptions.albumentationsoptions import AlbumentationOptions
+from logger.logparams import Debugger
 from utilities.filesystem import FolderIterator, PathSupport
 from utilities.inputoutput import IO
+from utilities.jsonprocessor import JsonParser
 
 
 class ImageArtification_self:
@@ -31,7 +35,7 @@ class ImageArtification_self:
 
     def __init__(self, background_folder_path=None, foreground_folder_path=None,
                  flag=cv2.MIXED_CLONE, bg_param=None, fg_param=None, name_val_match=None,
-                 always_apply=True, p_b=.7, p_f=1, p_f_freq=.7):
+                 always_apply=True, p_b=1, p_f=1, p_f_freq=.7):
         self.logger = logging.getLogger("ImageArtification_self")
         self.background_folder = background_folder_path
         self.foreground_folder = foreground_folder_path
@@ -55,12 +59,18 @@ class ImageArtification_self:
         self.p_b = p_b
         self.p_f = p_f
         self.p_f_freq = p_f_freq
+        self.chosen_fg = None
+        self.chosen_bg = None
 
     def proc_params(self, bg_param, fg_param):
         if not bg_param:
             self.bg_param = {}
+        else:
+            self.bg_param = bg_param
         if not fg_param:
             self.fg_param = {}
+        else:
+            self.fg_param = fg_param
 
     def proc_folders(self):
 
@@ -89,40 +99,62 @@ class ImageArtification_self:
     def fit_background(self):
         pass
 
+    def __aug_bg_back(self):
+        if self.arti_height < self.im_height or self.arti_width < self.im_width:
+            clac_dif_h = self.im_height - self.arti_height
+            clac_dif_w = self.im_width - self.arti_width
+            ext_height = (int(clac_dif_h / 2)) if clac_dif_h > 0 else 0
+            top, bottom = ext_height + 10, ext_height + 10
+            ext_width = int(clac_dif_w / 2) if clac_dif_w > 0 else 0
+            left, right = ext_width + 10, ext_width + 10
+            self.artificial_background = cv2.copyMakeBorder(self.artificial_background, top, bottom, left, right,
+                                                            cv2.BORDER_REFLECT_101)[:self.im_height, :self.im_width,
+                                         :]
+        if self.arti_height > self.im_height or self.arti_width > self.im_width:
+            self.artificial_background = cv2.resize(self.artificial_background,
+                                                    (self.im_width,
+                                                     self.im_height))  # to prevent background oversize
+            self.artificial_background = self.artificial_background[:self.im_height, :self.im_width, :]
+        return self.artificial_background
+
+
+    def __aug_bg_cov(self):
+
+        ratio = self.bg_param["ratio"]
+
+        self.artificial_background = imutils.resize(self.artificial_background,
+                                                 self.im_height//ratio)
+
+        return self.artificial_background
+
+    def __aug_fg_back(self, height, width):
+        if self.arti_height < height or self.arti_width < width:
+            clac_dif_h = height - self.arti_height
+            clac_dif_w = height - self.arti_width
+            ext_height = (int(clac_dif_h / 2)) if clac_dif_h > 0 else 0
+            top, bottom = ext_height, ext_height
+            ext_width = int(clac_dif_w / 2) if clac_dif_w > 0 else 0
+            left, right = ext_width, ext_width
+            if self.arti_height * 2 < height:
+                self.artificial_foreground = cv2.copyMakeBorder(self.artificial_foreground, top, bottom, left,
+                                                                right,
+                                                                cv2.BORDER_REFLECT_101)[:height, :width, :]
+            self.artificial_foreground = cv2.resize(self.artificial_foreground, (width, height))
+        if self.arti_height > height or self.arti_width > width:
+            self.artificial_foreground = self.artificial_foreground[:height, :width, :]
+
     def __fit_borders(self, width=None, height=None):
         # transform = albu.PadIfNeeded(min_height=height, min_width=width, always_apply=True) # didn't work
         # new=transform.apply(self.artificial_image)
         if not isinstance(self.artificial_background, type(None)):
-            if self.arti_height < self.im_height or self.arti_width < self.im_width:
-                clac_dif_h = self.im_height - self.arti_height
-                clac_dif_w = self.im_height - self.arti_width
-                ext_height = (int(clac_dif_h / 2)) if clac_dif_h > 0 else 0
-                top, bottom = ext_height + 10, ext_height + 10
-                ext_width = int(clac_dif_w / 2) if clac_dif_w > 0 else 0
-                left, right = ext_width + 10, ext_width + 10
-                self.artificial_background = cv2.copyMakeBorder(self.artificial_background, top, bottom, left, right,
-                                                                cv2.BORDER_REFLECT_101)[:self.im_height, :self.im_width,
-                                             :]
-            if self.arti_height > self.im_height or self.arti_width > self.im_width:
-                self.artificial_background = cv2.resize(self.artificial_background,
-                                                        (self.im_width,
-                                                         self.im_height))  # to prevent background oversize
-                self.artificial_background = self.artificial_background[:self.im_height, :self.im_width, :]
+
+            if self.bg_param["bottom"]:
+                self.artificial_background = self.__aug_bg_back()
+            else:
+                self.artificial_background = self.__aug_bg_cov()
+
         if not isinstance(self.artificial_foreground, type(None)) and height and width:
-            if self.arti_height < height or self.arti_width < width:
-                clac_dif_h = height - self.arti_height
-                clac_dif_w = height - self.arti_width
-                ext_height = (int(clac_dif_h / 2)) if clac_dif_h > 0 else 0
-                top, bottom = ext_height, ext_height
-                ext_width = int(clac_dif_w / 2) if clac_dif_w > 0 else 0
-                left, right = ext_width, ext_width
-                if self.arti_height * 2 < height:
-                    self.artificial_foreground = cv2.copyMakeBorder(self.artificial_foreground, top, bottom, left,
-                                                                    right,
-                                                                    cv2.BORDER_REFLECT_101)[:height, :width, :]
-                self.artificial_foreground = cv2.resize(self.artificial_foreground, (width, height))
-            if self.arti_height > height or self.arti_width > width:
-                self.artificial_foreground = self.artificial_foreground[:height, :width, :]
+            self.__aug_fg_back(width=width, height=height)
 
     def __choose_object(self, chosen):
         logger = self.logger.getChild("__chosen_obgect")
@@ -132,6 +164,7 @@ class ImageArtification_self:
         logger.debug(("artificial_image_path", artificial_image_path))
         logger.debug(("chosen_path", chosen_path))
         return artificial_image_path
+    # def __process_background_params(self, background):
 
     def get_params_dependent_on_targets(self, image, mask):
 
@@ -144,9 +177,10 @@ class ImageArtification_self:
         coords = []
 
         if self.foreground_folder:
-            chosen_fg = random.choice(self.fg_folds)
+            self.chosen_fg = random.choice(self.fg_folds)
         if self.background_folder:
-            chosen_bg = random.choice(self.bg_folds)
+            self.chosen_bg = random.choice(self.bg_folds)
+            self.bg_param = self.bg_param[self.chosen_bg]
         medians = {}
         for ind, item in enumerate(self.cnts):
             rect = cv2.boundingRect(item)
@@ -165,15 +199,24 @@ class ImageArtification_self:
             logger.debug(("mask_final.shape", mask_final.shape))
             logger.debug(("median", median))
             logger.debug(("median", median))
-            logger.debug(("self.name_val_match[chosen_fg] ", self.name_val_match[chosen_fg]))
+            logger.debug(("self.name_val_match[chosen_fg] ", self.name_val_match[self.chosen_fg]))
 
         if self.background_folder and random.random() < self.p_b:
-            chosen_path = os.path.join(self.background_folder, chosen_bg)
+            chosen_path = os.path.join(self.background_folder, self.chosen_bg)
             chosen_object = random.choice(os.listdir(chosen_path))
             artificial_image_path = os.path.join(chosen_path, chosen_object)
             logger.debug(("artificial_image_path", artificial_image_path))
             logger.debug(("chosen_path", chosen_path))
-            self.artificial_background = IO.read(artificial_image_path)
+            logger.debug(("chosen_bg", self.chosen_bg))
+            bg_check = not self.bg_param
+            if bg_check:
+                self.artificial_background = IO.read(artificial_image_path)
+            elif self.bg_param["search_mask"]:
+                self.artificial_background = IO.read(artificial_image_path, flag=-1)
+                if self.artificial_background.shape[-1]>3:
+                    bg_im_mask = self.artificial_background[:,:,3]
+                    self.artificial_background = cv2.bitwise_and(self.artificial_background[:,:,:3],
+                                                                 cv2.merge((bg_im_mask,bg_im_mask,bg_im_mask)))
             self.arti_height, self.arti_width = self.artificial_background.shape[:2]
             logger.debug(("self.arti_height < self.im_height or self.arti_width < self.im_width",
                           self.arti_height < self.im_height or self.arti_width < self.im_width))
@@ -191,12 +234,12 @@ class ImageArtification_self:
             if self.name_val_match:
                 names = list(self.name_val_match)
                 values = list(self.name_val_match.values())
-                if chosen_fg in names:
+                if self.chosen_fg in names:
                     for ind, coord in self.coord_d.items():
-                        if medians[ind] == self.name_val_match[chosen_fg]:
+                        if medians[ind] == self.name_val_match[self.chosen_fg]:
                             x, y, w, h = coord
                             if random.random() < self.p_f_freq:
-                                chosen_path = os.path.join(self.foreground_folder, chosen_fg)
+                                chosen_path = os.path.join(self.foreground_folder, self.chosen_fg)
                                 chosen_object = random.choice(os.listdir(chosen_path))
                                 artificial_image_path = os.path.join(chosen_path, chosen_object)
                                 logger.debug(("artificial_image_path", artificial_image_path))
@@ -217,7 +260,8 @@ class ImageArtification_self:
                         #     self.coords.append(coord)
 
 
-def artificate(image, cnts, artifical_background=None, foregrounds=None, masks=None):
+def artificate(image, cnts, artifical_background=None, foregrounds=None,
+               masks=None, configs=None, ini_mask=None):
     # GUI_interaction.imgshow(artfical)
     # GUI_interaction.imgshow(image)
     real_image = image.copy()
@@ -241,22 +285,60 @@ def artificate(image, cnts, artifical_background=None, foregrounds=None, masks=N
                 # real_image = image
             # print(x,y,w,h)
         if not isinstance(artifical_background, type(None)):
+            bottom_check = isinstance(ini_mask, type(None)) and configs and configs["bottom"] or not configs
             for ind, contour in cnts.items():
                 x, y, w, h = contour
-                artifical = artifical_image[y:y + h, x:x + w]
-                # foreground = cv2.bitwise_and(artifical, mask)
-                artifical_background[y:y + h, x:x + w] = artifical  # cv2.bitwise_or(roi, foreground)
-            artifical_image = artifical_background
+                if not bottom_check: # should it be on the background or is it a foreground object
+                    artifical = artifical_image[y:y + h, x:x + w]
+                    # foreground = cv2.bitwise_and(artifical, mask)
+                    artifical_background[y:y + h, x:x + w] = artifical  # cv2.bitwise_or(roi, foreground)
+                else: # if it is a foreground object
+                    b_h, b_w = artifical_background.shape[:2]
+                    a_h, a_w = artifical_image.shape[:2]
+                    x = random.randrange(0, a_w - (b_w//2))
+                    y = random.randrange(0, a_h - (b_h//2))
+                    # if roi.shape[:2] >
+                    tot_height = y + b_h
+                    tot_width = x + b_w
+                    if tot_height > a_h:
+                        fin_h = a_h - tot_height
+                        fin_h = tot_height + fin_h
+                    else:
+                        fin_h = tot_height
+                    if tot_width > a_w:
+                        fin_w = a_w - tot_width
+                        fin_w = tot_width + fin_w
+                    else:
+                        fin_w = tot_width
+                    roi = artifical_image[y:fin_h, x:fin_w].copy()
+                    roi_h, roi_w = roi.shape[:2]
+                    artifical_background = artifical_background[:roi_h, :roi_w, :]
+                    mask = artifical_background.copy()
+                    mask[mask > 0] = 255
+                    mask = cv2.bitwise_not(mask)
+                    roi = cv2.bitwise_and(roi, mask)
+
+                    new_im = cv2.bitwise_or(roi, artifical_background)
+                    artifical_image[y:fin_h, x:fin_w] = new_im
+                    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+                    roi = ini_mask[y:fin_h, x:fin_w].copy()
+                    new_im = cv2.bitwise_and(roi, mask)
+                    ini_mask[y:fin_h, x:fin_w] = new_im
+                    # ini_mask = cv2.bitwise_not(ini_mask)
+
+
+            artifical_image = artifical_image
             # real_image = artifical_background
+            return artifical_image, ini_mask
 
     else:
-        for contour in cnts.values():
-            x, y, w, h = contour
-            if not isinstance(artifical_background, type(None)):
+        if not isinstance(artifical_background, type(None)):
+            for contour in cnts.values():
+                x, y, w, h = contour
                 artifical_background[y:y + h, x:x + w] = real_image[y:y + h, x:x + w]
-                real_image = artifical_background
+                artifical_image = artifical_background
         # GUI_interaction.imgshow(artfical)
-    return artifical_image
+    return artifical_image, None
 
 
 def artificate_foreground(image, artfical, cnts):
@@ -272,7 +354,7 @@ def artificate_foreground(image, artfical, cnts):
 
 
 def process_with_check(path_to_store, path_to_save, foreground_path=None, background_path=None,
-                       mask_ext=None, name_val_match=None):
+                       mask_ext=None, name_val_match=None, background_params=None):
     """
 
     :param path_to_store: where the initial images stored
@@ -312,17 +394,18 @@ def process_with_check(path_to_store, path_to_save, foreground_path=None, backgr
                 mask = cv2.rotate(mask, cv2.ROTATE_90_CLOCKWISE)
             num = 0
             ia = ImageArtification_self(foreground_folder_path=foreground_path, background_folder_path=background_path,
-                                        name_val_match=name_val_match)
+                                        name_val_match=name_val_match,bg_param=background_params)
             ia.get_params_dependent_on_targets(image, mask)
-            artfical = artificate(image=ia.image, foregrounds=ia.all_foregrounds,
+            artfical, _ = artificate(image=ia.image, foregrounds=ia.all_foregrounds,
                                   artifical_background=ia.artificial_background,
-                                  cnts=ia.coord_d, masks=ia.all_masks)
+                                  cnts=ia.coord_d, masks=ia.all_masks, ini_mask=mask)
             #
-
-            aug = AlbumentationOptions.box_segmentation_aug()
-            augment = aug(image=artfical, mask=mask)
-            artfical = augment["image"]
-            mask = augment["mask"]
+            if not isinstance(_, type(None)):
+                mask = _
+            # aug = AlbumentationOptions.box_segmentation_aug()
+            # augment = aug(image=artfical, mask=mask)
+            # artfical = augment["image"]
+            # mask = augment["mask"]
 
 
             name = os.path.split(path)[-1]
@@ -336,7 +419,7 @@ def process_with_check(path_to_store, path_to_save, foreground_path=None, backgr
             assert IO.write(mask, os.path.join(path_to_save, "mask", name_fin + mask_ext)), \
                 "save path is wrong " + os.path.join(path_to_save, "mask", name_fin + mask_ext)
             # print(path)
-            shutil.move(os.path.join(image_path, path), os.path.join("D:/Local drive/Segmentation task/All_data/done", name))
+            # shutil.move(os.path.join(image_path, path), os.path.join("D:/Local drive/Segmentation task/All_data/done", name))
             num += 1
 
     if len(wrong) > 0:
@@ -345,13 +428,20 @@ def process_with_check(path_to_store, path_to_save, foreground_path=None, backgr
 
 if __name__ == "__main__":
     Debugger("aug_test")
-    path_for_segm_labels = "D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/Segmentation/Box_segm.json"
-    segclass = Segclass_json_transform(
-        path_for_segm_labels)  # ignore=["limestone", "static", "unlabeled", "core_column"] ,"static","cracks" ignore=["limestone", "static", "unlabeled"]
+    path_for_segm_labels = "./examples/Box_segmentation.json"
+    segclass = JsonParser(
+        path_for_segm_labels)
     segclass.load_label_ids()
     print(segclass.__info__())
-    process_with_check(path_to_store="D:/Local drive/Segmentation task/All_data/train/train",#initial",#
-                       path_to_save="D:/Local drive/Segmentation task/aug_All_data",#",#
-                       foreground_path="D:/Local drive/Segmentation task/foreground",
-                       background_path="D:/Local drive/Segmentation task/background",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
-                        name_val_match=segclass.name_id)#mask_ext=".png",
+    background_parameters = {"ground":{"bottom": True, "search_mask": False},
+                             "hammer":{"bottom": False, "cover_foreground": True,
+                                       "search_mask": True, "ratio":5},
+                             "pen": {"bottom": False, "cover_foreground": True,
+                                        "search_mask": True, "ratio": 9}
+                             }
+    process_with_check(path_to_store="./examples/data_sample",#initial",#
+                       path_to_save="C:/Users/ebara/PycharmProjects/TemplateArtification/examples/aug_sample",#",#
+                       foreground_path="./examples/foregrounds",
+                       background_path="./examples/backgrounds",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
+                        name_val_match=segclass.name_id, background_params=background_parameters,
+                       mask_ext=".png")#mask_ext=".png",

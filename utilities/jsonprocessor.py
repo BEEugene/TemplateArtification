@@ -4,14 +4,11 @@ import logging
 from logger.logparams import Debug_param
 
 
-class Segclass_json_transform:
-    # logger = logging.getLogger("Segclass_json_transform")
-    # logger.setLevel(logging.DEBUG)
-    """"""
+class JsonParser:
 
     def __init__(self, path_to_json, ignore=[], not_to_ignore=[]):
         """
-
+        Get the info from the json files
         :param path_to_json: name_val_match path
         :param ignore: the list of labels which should not be loaded
         :param not_to_ignore: the list of labels which should be loaded
