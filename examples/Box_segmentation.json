@@ -1,0 +1,54 @@
+{
+    "labels": 
+	{
+        "core_sample": 
+        {
+            "categorie": "storage",
+            "color": 
+            [
+                0,
+                180,
+                0
+            ],
+            "id": 200,
+            "id_categorie": 3,
+            "name": "core_sample"
+        },
+
+        "core_column": 
+        {
+            "categorie": "storage",
+            "color": 
+            [
+                0,
+                255,
+                0
+            ],
+            "id": 255,
+            "id_categorie": 3,
+            "name": "core_column"
+        },
+        "scale_bar": {
+            "categorie": "storage",
+            "color": [
+                213,
+                62,
+                7
+            ],
+            "id": 150,
+            "id_categorie": 3,
+            "name": "scale_bar"
+        },
+        "color_bar": {
+            "categorie": "storage",
+            "color": [
+                255,
+                255,
+                0
+            ],
+            "id": 100,
+            "id_categorie": 1,
+            "name": "color_bar"
+        }
+    }
+}

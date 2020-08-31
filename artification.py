@@ -292,39 +292,40 @@ def artificate(image, cnts, artifical_background=None, foregrounds=None,
                     artifical = artifical_image[y:y + h, x:x + w]
                     # foreground = cv2.bitwise_and(artifical, mask)
                     artifical_background[y:y + h, x:x + w] = artifical  # cv2.bitwise_or(roi, foreground)
-                else: # if it is a foreground object
-                    b_h, b_w = artifical_background.shape[:2]
-                    a_h, a_w = artifical_image.shape[:2]
-                    x = random.randrange(0, a_w - (b_w//2))
-                    y = random.randrange(0, a_h - (b_h//2))
-                    # if roi.shape[:2] >
-                    tot_height = y + b_h
-                    tot_width = x + b_w
-                    if tot_height > a_h:
-                        fin_h = a_h - tot_height
-                        fin_h = tot_height + fin_h
-                    else:
-                        fin_h = tot_height
-                    if tot_width > a_w:
-                        fin_w = a_w - tot_width
-                        fin_w = tot_width + fin_w
-                    else:
-                        fin_w = tot_width
-                    roi = artifical_image[y:fin_h, x:fin_w].copy()
-                    roi_h, roi_w = roi.shape[:2]
-                    artifical_background = artifical_background[:roi_h, :roi_w, :]
-                    mask = artifical_background.copy()
-                    mask[mask > 0] = 255
-                    mask = cv2.bitwise_not(mask)
-                    roi = cv2.bitwise_and(roi, mask)
+                # else: # if it is a foreground object
+            if bottom_check:
+                b_h, b_w = artifical_background.shape[:2]
+                a_h, a_w = artifical_image.shape[:2]
+                x = random.randrange(0, a_w - (b_w//2))
+                y = random.randrange(0, a_h - (b_h//2))
+                # if roi.shape[:2] >
+                tot_height = y + b_h
+                tot_width = x + b_w
+                if tot_height > a_h:
+                    fin_h = a_h - tot_height
+                    fin_h = tot_height + fin_h
+                else:
+                    fin_h = tot_height
+                if tot_width > a_w:
+                    fin_w = a_w - tot_width
+                    fin_w = tot_width + fin_w
+                else:
+                    fin_w = tot_width
+                roi = artifical_image[y:fin_h, x:fin_w].copy()
+                roi_h, roi_w = roi.shape[:2]
+                artifical_background = artifical_background[:roi_h, :roi_w, :]
+                mask = artifical_background.copy()
+                mask[mask > 0] = 255
+                mask = cv2.bitwise_not(mask)
+                roi = cv2.bitwise_and(roi, mask)
 
-                    new_im = cv2.bitwise_or(roi, artifical_background)
-                    artifical_image[y:fin_h, x:fin_w] = new_im
-                    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-                    roi = ini_mask[y:fin_h, x:fin_w].copy()
-                    new_im = cv2.bitwise_and(roi, mask)
-                    ini_mask[y:fin_h, x:fin_w] = new_im
-                    # ini_mask = cv2.bitwise_not(ini_mask)
+                new_im = cv2.bitwise_or(roi, artifical_background)
+                artifical_image[y:fin_h, x:fin_w] = new_im
+                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+                roi = ini_mask[y:fin_h, x:fin_w].copy()
+                new_im = cv2.bitwise_and(roi, mask)
+                ini_mask[y:fin_h, x:fin_w] = new_im
+                # ini_mask = cv2.bitwise_not(ini_mask)
 
 
             artifical_image = artifical_image
