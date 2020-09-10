@@ -36,6 +36,19 @@ class ImageArtification_self:
     def __init__(self, background_folder_path=None, foreground_folder_path=None,
                  flag=cv2.MIXED_CLONE, bg_param=None, fg_param=None, name_val_match=None,
                  always_apply=True, p_b=1, p_f=1, p_f_freq=.7):
+        """
+
+        :param background_folder_path:
+        :param foreground_folder_path:
+        :param flag:
+        :param bg_param:
+        :param fg_param:
+        :param name_val_match:
+        :param always_apply:
+        :param p_b: background change probability
+        :param p_f: foreground change probability
+        :param p_f_freq: foreground change probability
+        """
         self.logger = logging.getLogger("ImageArtification_self")
         self.background_folder = background_folder_path
         self.foreground_folder = foreground_folder_path
@@ -217,7 +230,11 @@ class ImageArtification_self:
                     bg_im_mask = self.artificial_background[:,:,3]
                     self.artificial_background = cv2.bitwise_and(self.artificial_background[:,:,:3],
                                                                  cv2.merge((bg_im_mask,bg_im_mask,bg_im_mask)))
+            else:
+                logger.debug(("the mask wil not be searched, this is a background image"))
+                self.artificial_background = IO.read(artificial_image_path)
             try:
+                # self.artificial_background = IO.read(artificial_image_path)
                 self.arti_height, self.arti_width = self.artificial_background.shape[:2]
             except Exception as e:
                 print("e", e)
@@ -253,8 +270,12 @@ class ImageArtification_self:
                                 logger.debug(("self.arti_height < self.im_height or self.arti_width < self.im_width",
                                               self.arti_height < self.im_height or self.arti_width < self.im_width))
                                 logger.debug(("self.artificial_foreground.shape", self.artificial_foreground.shape))
-                                self.__fit_borders(w, h)
-                                foreground = cv2.bitwise_and(self.artificial_foreground, self.all_masks[ind])
+
+                                if self.arti_height*2 < h: #if the artificial height is larger then original height
+                                    foreground=None
+                                else:
+                                    self.__fit_borders(w, h)
+                                    foreground = cv2.bitwise_and(self.artificial_foreground, self.all_masks[ind])
                                 self.all_foregrounds[ind] = foreground
                                 # todo: create artificial mask when transforming the artificial image
                                 a_height, a_width = self.artificial_foreground.shape[:2]  # params['image'].shape[:2]
@@ -265,39 +286,47 @@ class ImageArtification_self:
 
 
 def artificate(image, cnts, artifical_background=None, foregrounds=None,
-               masks=None, configs=None, ini_mask=None):
+               masks=None, background_type=None, configs=None, ini_mask=None):
     # GUI_interaction.imgshow(artfical)
     # GUI_interaction.imgshow(image)
+    logger = logging.getLogger("artificate")
     real_image = image.copy()
     artifical_image = image.copy()
     if foregrounds and masks:
         for ind, contour in cnts.items():
+            # replace real image part with a artificial one
+            # e.g. take roi with core on the real image and change it to other core
             x, y, w, h = contour
             mask = masks[ind]
-            logging.debug(("mask", mask))
+            logger.debug(("mask", mask))
             artifical = real_image[y:y + h, x:x + w]
             # GUI_interaction.imgshow(artifical)
-            logging.debug(("artifical", artifical))
+            logger.debug(("artifical", artifical))
             mask_p = cv2.bitwise_not(mask)
-            logging.debug(("mask_p", mask_p))
+            logger.debug(("mask_p", mask_p))
             roi = cv2.bitwise_and(artifical, mask_p)
-            logging.debug(("roi.shape", roi.shape))
+            logger.debug(("roi.shape", roi.shape))
             if not isinstance(foregrounds[ind], type(None)):
-                logging.debug(("foregrounds[ind]", foregrounds[ind]))
-                logging.debug(("foregrounds[ind].shape", foregrounds[ind].shape))
+                logger.debug(("foregrounds[ind]", foregrounds[ind]))
+                logger.debug(("foregrounds[ind].shape", foregrounds[ind].shape))
                 artifical_image[y:y + h, x:x + w] = cv2.bitwise_or(roi, foregrounds[ind])
                 # real_image = image
             # print(x,y,w,h)
         if not isinstance(artifical_background, type(None)):
-            bottom_check = isinstance(ini_mask, type(None)) and configs and configs["bottom"] or not configs
+            bottom_check = configs[background_type]["bottom"]
+            logger.debug("bottom_check", background_type, configs[background_type]["bottom"])
+            temp_image = artifical_image.copy()
             for ind, contour in cnts.items():
                 x, y, w, h = contour
-                if not bottom_check: # should it be on the background or is it a foreground object
+                if bottom_check: # should it be on the background or is it a foreground object
                     artifical = artifical_image[y:y + h, x:x + w]
                     # foreground = cv2.bitwise_and(artifical, mask)
                     artifical_background[y:y + h, x:x + w] = artifical  # cv2.bitwise_or(roi, foreground)
+                    temp_image = artifical_background
+
+            artifical_image = temp_image
                 # else: # if it is a foreground object
-            if bottom_check:
+            if not bottom_check:
                 b_h, b_w = artifical_background.shape[:2]
                 a_h, a_w = artifical_image.shape[:2]
                 x = random.randrange(0, a_w - (b_w//2))
@@ -388,53 +417,66 @@ def process_with_check(path_to_store: str, path_to_save: str, foreground_path: s
             image_name = name + image_ext
         else:
             image_name = path
+        if os.path.exists(os.path.join(image_path, image_name)):
+            image = IO.read(os.path.join(image_path, image_name))
+            mask = IO.read(os.path.join(mask_path, mask_name), 0)
+            h, w = image.shape[:2]
 
-        image = IO.read(os.path.join(image_path, image_name))
-        mask = IO.read(os.path.join(mask_path, mask_name), 0)
-        h, w = image.shape[:2]
-        # if image.shape[:2] != mask.shape[:2]:
-        #     image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
-        #     h, w = image.shape[:2]
+            if image.shape[:2] != mask.shape[:2]:
+                wrong.append(path)
 
-        if image.shape[:2] != mask.shape[:2]:
+            # if image.shape[:2] != mask.shape[:2]:
+            #     image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+            #     h, w = image.shape[:2]
+
+
+
+            else:
+                if w > h:
+                    image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+                    mask = cv2.rotate(mask, cv2.ROTATE_90_CLOCKWISE)
+                num = 0
+                ia = ImageArtification_self(foreground_folder_path=foreground_path, background_folder_path=background_path,
+                                            name_val_match=name_val_match,bg_param=background_params)
+                ia.get_params_dependent_on_targets(image, mask)
+                artfical, _ = artificate(image=ia.image, foregrounds=ia.all_foregrounds,
+                                      artifical_background=ia.artificial_background,
+                                      cnts=ia.coord_d, masks=ia.all_masks, ini_mask=mask,
+                                         background_type=ia.chosen_bg,
+                                         configs=background_params)
+                #
+                if not isinstance(_, type(None)):
+                    mask = _
+                # aug = AlbumentationOptions.box_segmentation_aug()
+                # augment = aug(image=artfical, mask=mask)
+                # artfical = augment["image"]
+                # mask = augment["mask"]
+
+
+                name = os.path.split(path)[-1]
+                new_name = PathSupport.takename(name)[0]
+                # ext = PathSupport.takeext(name)[0]
+                mask_ext = PathSupport.takeext(name)[0]
+                name_fin = new_name + "-" + str(num)
+                # print(os.path.join(path_to_save, "image", name))
+                mask_save_path = os.path.join(path_to_save, "mask")
+                image_save_path = os.path.join(path_to_save, "image")
+                if not os.path.exists(mask_save_path):
+                    os.makedirs(mask_save_path)
+                if not os.path.exists(image_save_path):
+                    os.makedirs(image_save_path)
+                assert IO.write(artfical, os.path.join(image_save_path, name_fin + image_ext)), \
+                    "save path is wrong " + os.path.join(image_save_path, name_fin + image_ext)
+                assert IO.write(mask, os.path.join(mask_save_path, name_fin + mask_ext)), \
+                    "save path is wrong " + os.path.join(mask_save_path, name_fin + mask_ext)
+                # print(path)
+                # shutil.move(os.path.join(image_path, path), os.path.join("D:/Local drive/Segmentation task/All_data/done", name))
+                num += 1
+        else:
             wrong.append(path)
 
-        else:
-            if w > h:
-                image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
-                mask = cv2.rotate(mask, cv2.ROTATE_90_CLOCKWISE)
-            num = 0
-            ia = ImageArtification_self(foreground_folder_path=foreground_path, background_folder_path=background_path,
-                                        name_val_match=name_val_match,bg_param=background_params)
-            ia.get_params_dependent_on_targets(image, mask)
-            artfical, _ = artificate(image=ia.image, foregrounds=ia.all_foregrounds,
-                                  artifical_background=ia.artificial_background,
-                                  cnts=ia.coord_d, masks=ia.all_masks, ini_mask=mask)
-            #
-            if not isinstance(_, type(None)):
-                mask = _
-            # aug = AlbumentationOptions.box_segmentation_aug()
-            # augment = aug(image=artfical, mask=mask)
-            # artfical = augment["image"]
-            # mask = augment["mask"]
-
-
-            name = os.path.split(path)[-1]
-            new_name = PathSupport.takename(name)[0]
-            ext = PathSupport.takeext(name)[0]
-            mask_ext = PathSupport.takeext(name)[0]
-            name_fin = new_name + "-" + str(num)
-            print(os.path.join(path_to_save, "image", name))
-            assert IO.write(artfical, os.path.join(path_to_save, "image", name_fin + ext)), \
-                "save path is wrong " + os.path.join(path_to_save, "image", name_fin + ext)
-            assert IO.write(mask, os.path.join(path_to_save, "mask", name_fin + mask_ext)), \
-                "save path is wrong " + os.path.join(path_to_save, "mask", name_fin + mask_ext)
-            # print(path)
-            # shutil.move(os.path.join(image_path, path), os.path.join("D:/Local drive/Segmentation task/All_data/done", name))
-            num += 1
-
     if len(wrong) > 0:
-        print("These images where ignored", wrong)
+        print("These images were ignored", wrong)
 
 
 if __name__ == "__main__":
@@ -444,11 +486,12 @@ if __name__ == "__main__":
         path_for_segm_labels)
     segclass.load_label_ids()
     print(segclass.__info__())
-    background_parameters = {"ground":{"bottom": True, "search_mask": False},
+    background_parameters = {"ground":{"bottom": True, "search_mask": False,
+                                       "cover_foreground": False},
                              "hammer":{"bottom": False, "cover_foreground": True,
                                        "search_mask": True, "ratio":5},
                              "pen": {"bottom": False, "cover_foreground": True,
-                                        "search_mask": True, "ratio": 9},
+                                        "search_mask": True, "ratio": 22},
                              "hat":{"bottom": False, "cover_foreground": True,
                                        "search_mask": True, "ratio":5},
                              "hand": {"bottom": False, "cover_foreground": True,
@@ -460,34 +503,37 @@ if __name__ == "__main__":
 
     main_path = "D:/Local drive/Segmentation task/Что сделано"
 
-    subpaths = ["/01032020",
-                "/05032020",
-                "/15042020",
-                "/25022020/1",
-                "/25022020/2",
-                "/25022020/5",
-                "/25022020/6",
-                "/25022020/7",
-                "/25022020/8",
-                "/25022020/9",
-                "/25022020/11",
-                "/25022020/12",
-                "/29022020 что сделано/Большая площадь, скв. 297, Ящ. 1-12",
-                "/29022020 что сделано/Галяновская площадь, скв. 2631, Ящ. 1-13",
-                "/29022020 что сделано/Загадочные 86 коробок",
-                "/29022020 что сделано/Ольховское, скв. 301, Ящ. 1-9",
-                "/29022020 что сделано/Средне-Назымское, скв. 311, Ящ. 1-18",
-                "/Скв. 888-06, ящ. 1-40/image"]
+    subpaths = [
+                # "./01032020",
+                # "./05032020",
+                # "./15042020",
+                "./What I've done/1",
+                "./What I've done/2",
+                "./What I've done/5",
+                "./What I've done/6",
+                "./What I've done/7",
+                "./What I've done/8",
+                "./What I've done/9",
+                "./What I've done/11",
+                "./What I've done/12",
+                "./29022020 что сделано/Большая площадь, скв. 297, Ящ. 1-12",
+                "./29022020 что сделано/Галяновская площадь, скв. 2631, Ящ. 1-13",
+                "./29022020 что сделано/Загадочные 86 коробок",
+                "./29022020 что сделано/Ольховское, скв. 301, Ящ. 1-9",
+                "./29022020 что сделано/Средне-Назымское, скв. 311, Ящ. 1-18",
+                "./Скв. 888-06, ящ. 1-40/"]
     image_path = "image/DL"
     mask_path = "mask"
     for path in tqdm(subpaths):
         storage = os.path.join(main_path, path)
+        assert os.path.exists(storage), ("Path doesn't exist:", storage)
+        # print(storage, os.path.exists(storage))
         save_store = os.path.join("D:/Local drive/Segmentation task/augmented", path)
         if not os.path.exists(save_store):
             os.makedirs(save_store)
         process_with_check(path_to_store=storage, #"./examples/data_sample",#initial",#
                            path_to_save=save_store,#"D:/Local drive/Pycharm/TemplateArtification/examples/aug_sample",#",#
-                           foreground_path="./examples/foregrounds",
+                           foreground_path="D:/Local drive/Segmentation task//foreground",
                            background_path="D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",#"./examples/backgrounds",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
                             name_val_match=segclass.name_id, background_params=background_parameters,
-                           mask_ext=".png")#mask_ext=".png",
+                           image_ext=".jpg", image_path=image_path)#mask_ext=".png",
