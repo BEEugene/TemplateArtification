@@ -217,7 +217,11 @@ class ImageArtification_self:
                     bg_im_mask = self.artificial_background[:,:,3]
                     self.artificial_background = cv2.bitwise_and(self.artificial_background[:,:,:3],
                                                                  cv2.merge((bg_im_mask,bg_im_mask,bg_im_mask)))
-            self.arti_height, self.arti_width = self.artificial_background.shape[:2]
+            try:
+                self.arti_height, self.arti_width = self.artificial_background.shape[:2]
+            except Exception as e:
+                print("e", e)
+                print(artificial_image_path)
             logger.debug(("self.arti_height < self.im_height or self.arti_width < self.im_width",
                           self.arti_height < self.im_height or self.arti_width < self.im_width))
 
@@ -354,8 +358,9 @@ def artificate_foreground(image, artfical, cnts):
     return artfical
 
 
-def process_with_check(path_to_store, path_to_save, foreground_path=None, background_path=None,
-                       mask_ext=None, name_val_match=None, background_params=None):
+def process_with_check(path_to_store: str, path_to_save: str, foreground_path: str=None, background_path: str = None,
+                       mask_ext: str = None, image_ext: str = None, name_val_match: dict = None, background_params: dict = None,
+                       mask_path: str = "mask", image_path: str = "image"):
     """
 
     :param path_to_store: where the initial images stored
@@ -366,20 +371,25 @@ def process_with_check(path_to_store, path_to_save, foreground_path=None, backgr
     :param name_val_match: foreground name - mask value match
     :return:
     """
-    mask_path = os.path.join(path_to_store, "mask")
-    image_path = os.path.join(path_to_store, "image")
-    filelist_box = FolderIterator.get_file_list(image_path, full_path=False)
+    mask_path = os.path.join(path_to_store, mask_path)
+    image_path = os.path.join(path_to_store, image_path)
+    filelist_box = FolderIterator.get_file_list(mask_path, full_path=False)
     wrong = []
     len(filelist_box)
 
     for path in tqdm(filelist_box):
         # print(mask_path, path)
-        mask_name = PathSupport.takename(path)[0]
+        name = PathSupport.takename(path)[0]
         if mask_ext:
-            mask_name = mask_name + mask_ext
+            mask_name = name + mask_ext
         else:
             mask_name = path
-        image = IO.read(os.path.join(image_path, path))
+        if image_ext:
+            image_name = name + image_ext
+        else:
+            image_name = path
+
+        image = IO.read(os.path.join(image_path, image_name))
         mask = IO.read(os.path.join(mask_path, mask_name), 0)
         h, w = image.shape[:2]
         # if image.shape[:2] != mask.shape[:2]:
@@ -412,7 +422,7 @@ def process_with_check(path_to_store, path_to_save, foreground_path=None, backgr
             name = os.path.split(path)[-1]
             new_name = PathSupport.takename(name)[0]
             ext = PathSupport.takeext(name)[0]
-            mask_ext = PathSupport.takeext(mask_name)[0]
+            mask_ext = PathSupport.takeext(name)[0]
             name_fin = new_name + "-" + str(num)
             print(os.path.join(path_to_save, "image", name))
             assert IO.write(artfical, os.path.join(path_to_save, "image", name_fin + ext)), \
@@ -438,11 +448,46 @@ if __name__ == "__main__":
                              "hammer":{"bottom": False, "cover_foreground": True,
                                        "search_mask": True, "ratio":5},
                              "pen": {"bottom": False, "cover_foreground": True,
-                                        "search_mask": True, "ratio": 9}
+                                        "search_mask": True, "ratio": 9},
+                             "hat":{"bottom": False, "cover_foreground": True,
+                                       "search_mask": True, "ratio":5},
+                             "hand": {"bottom": False, "cover_foreground": True,
+                                        "search_mask": True, "ratio": 9},
+                             "ruler":{"bottom": False, "cover_foreground": True,
+                                       "search_mask": True, "ratio":11},
+
                              }
-    process_with_check(path_to_store="./examples/data_sample",#initial",#
-                       path_to_save="C:/Users/ebara/PycharmProjects/TemplateArtification/examples/aug_sample",#",#
-                       foreground_path="./examples/foregrounds",
-                       background_path="./examples/backgrounds",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
-                        name_val_match=segclass.name_id, background_params=background_parameters,
-                       mask_ext=".png")#mask_ext=".png",
+
+    main_path = "D:/Local drive/Segmentation task/Что сделано"
+
+    subpaths = ["/01032020",
+                "/05032020",
+                "/15042020",
+                "/25022020/1",
+                "/25022020/2",
+                "/25022020/5",
+                "/25022020/6",
+                "/25022020/7",
+                "/25022020/8",
+                "/25022020/9",
+                "/25022020/11",
+                "/25022020/12",
+                "/29022020 что сделано/Большая площадь, скв. 297, Ящ. 1-12",
+                "/29022020 что сделано/Галяновская площадь, скв. 2631, Ящ. 1-13",
+                "/29022020 что сделано/Загадочные 86 коробок",
+                "/29022020 что сделано/Ольховское, скв. 301, Ящ. 1-9",
+                "/29022020 что сделано/Средне-Назымское, скв. 311, Ящ. 1-18",
+                "/Скв. 888-06, ящ. 1-40/image"]
+    image_path = "image/DL"
+    mask_path = "mask"
+    for path in tqdm(subpaths):
+        storage = os.path.join(main_path, path)
+        save_store = os.path.join("D:/Local drive/Segmentation task/augmented", path)
+        if not os.path.exists(save_store):
+            os.makedirs(save_store)
+        process_with_check(path_to_store=storage, #"./examples/data_sample",#initial",#
+                           path_to_save=save_store,#"D:/Local drive/Pycharm/TemplateArtification/examples/aug_sample",#",#
+                           foreground_path="./examples/foregrounds",
+                           background_path="D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",#"./examples/backgrounds",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
+                            name_val_match=segclass.name_id, background_params=background_parameters,
+                           mask_ext=".png")#mask_ext=".png",
