@@ -8,19 +8,19 @@ from logger.logparams import Debug_param
 class PathSupport:
 
     @staticmethod
-    def takenameext(aby):
+    def takenameext(aby: [str]) -> [str]:
         if isinstance(aby,str):
             aby=[aby]
         return [os.path.split(each)[-1] for each in aby]
 
     @staticmethod
-    def takename(any):
+    def takename(any: [str]) -> [str]:
         if isinstance(any,str):
-            any=[any]
+            any = [any]
         return [os.path.splitext(each_of)[0] for each_of in PathSupport.takenameext(any)]
 
     @staticmethod
-    def takeext(any):
+    def takeext(any: [str]) -> [str]:
         if isinstance(any,str):
             any=[any]
         return [os.path.splitext(each_of)[1] for each_of in PathSupport.takenameext(any)]
@@ -31,7 +31,7 @@ class FolderIterator:
         pass
 
     @staticmethod
-    def get_file_list(folder, extension=["any"], full_path=False):
+    def get_file_list(folder: str, extension: [str] = ["any"], full_path: bool = False):
         """
         get the files without any folders
         :param folder: which folder to list

@@ -33,7 +33,7 @@ class ImageArtification_self:
             uint8, float32
         """
 
-    def __init__(self, background_folder_path=None, foreground_folder_path=None,
+    def __init__(self, background_folder_path:str=None, foreground_folder_path:str=None,foreground_mask_path:str=None,
                  flag=cv2.MIXED_CLONE, bg_param=None, fg_param=None, name_val_match=None,
                  always_apply=True, p_b=1, p_f=1, p_f_freq=.7):
         """
@@ -52,16 +52,19 @@ class ImageArtification_self:
         self.logger = logging.getLogger("ImageArtification_self")
         self.background_folder = background_folder_path
         self.foreground_folder = foreground_folder_path
+        self.foreground_mask_path = foreground_mask_path
         self.proc_params(bg_param, fg_param)
         self.name_val_match = name_val_match
         self.masks = []
         self.all_masks = {}
         self.all_foregrounds = {}
+        self.all_foreground_masks = {}
         self.proc_folders()
         self.cnts = None
         self.coords = []
         self.artificial_background = None
         self.artificial_foreground = None
+        self.foreground_mask = None
         self.foregrounds = None
         self.image = None
         self.arti_height = None
@@ -153,8 +156,12 @@ class ImageArtification_self:
                                                                 right,
                                                                 cv2.BORDER_REFLECT_101)[:height, :width, :]
             self.artificial_foreground = cv2.resize(self.artificial_foreground, (width, height))
+            if not isinstance(self.foreground_mask, type(None)):
+                self.foreground_mask = cv2.resize(self.foreground_mask, (width, height))
         if self.arti_height > height or self.arti_width > width:
             self.artificial_foreground = self.artificial_foreground[:height, :width, :]
+            if not isinstance(self.foreground_mask, type(None)):
+                self.foreground_mask = self.foreground_mask[:height, :width]
 
     def __fit_borders(self, width=None, height=None):
         # transform = albu.PadIfNeeded(min_height=height, min_width=width, always_apply=True) # didn't work
@@ -209,6 +216,7 @@ class ImageArtification_self:
             # GUI_interaction.imgshow(mask_final)
             self.all_masks[ind] = mask_final
             self.all_foregrounds[ind] = None
+            self.all_foreground_masks[ind] = None
             logger.debug(("mask_final.shape", mask_final.shape))
             logger.debug(("median", median))
             logger.debug(("median", median))
@@ -272,11 +280,28 @@ class ImageArtification_self:
                                 logger.debug(("self.artificial_foreground.shape", self.artificial_foreground.shape))
 
                                 if self.arti_height*2 < h: #if the artificial height is larger then original height
-                                    foreground=None
+                                    foreground = None
                                 else:
+                                    if self.foreground_mask_path:
+                                        chosen_mask_path = os.path.join(self.foreground_mask_path, self.chosen_fg)
+                                        if os.path.exists(chosen_mask_path):
+                                            mask_list = os.listdir(chosen_mask_path)
+                                            cur_obj_name = PathSupport.takename(chosen_object)[0]
+                                            find_mask = [each for each in filter(lambda x: x!=None,
+                                                                                 [each if cur_obj_name in each else None
+                                                                                  for each in mask_list])]
+                                            if len(find_mask) == 1:
+                                                self.foreground_mask = IO.read(os.path.join(chosen_mask_path,
+                                                                                                  find_mask[0]),
+                                                                               flag=cv2.IMREAD_GRAYSCALE)
+                                            else:
+                                                self.foreground_mask = None
+
                                     self.__fit_borders(w, h)
                                     foreground = cv2.bitwise_and(self.artificial_foreground, self.all_masks[ind])
+                                    self.all_foreground_masks[ind] = self.foreground_mask
                                 self.all_foregrounds[ind] = foreground
+
                                 # todo: create artificial mask when transforming the artificial image
                                 a_height, a_width = self.artificial_foreground.shape[:2]  # params['image'].shape[:2]
                                 artificial_mask = None
@@ -285,7 +310,7 @@ class ImageArtification_self:
                         #     self.coords.append(coord)
 
 
-def artificate(image, cnts, artifical_background=None, foregrounds=None,
+def artificate(image, cnts, artifical_background=None, foregrounds=None,foreground_masks=None,
                masks=None, background_type=None, configs=None, ini_mask=None):
     # GUI_interaction.imgshow(artfical)
     # GUI_interaction.imgshow(image)
@@ -310,11 +335,13 @@ def artificate(image, cnts, artifical_background=None, foregrounds=None,
                 logger.debug(("foregrounds[ind]", foregrounds[ind]))
                 logger.debug(("foregrounds[ind].shape", foregrounds[ind].shape))
                 artifical_image[y:y + h, x:x + w] = cv2.bitwise_or(roi, foregrounds[ind])
+                if not isinstance(foreground_masks[ind], type(None)):
+                    ini_mask[y:y + h, x:x + w] = foreground_masks[ind]
                 # real_image = image
             # print(x,y,w,h)
         if not isinstance(artifical_background, type(None)):
             bottom_check = configs[background_type]["bottom"]
-            logger.debug("bottom_check", background_type, configs[background_type]["bottom"])
+            logger.debug(("bottom_check", background_type, configs[background_type]["bottom"]))
             temp_image = artifical_image.copy()
             for ind, contour in cnts.items():
                 x, y, w, h = contour
@@ -388,6 +415,7 @@ def artificate_foreground(image, artfical, cnts):
 
 
 def process_with_check(path_to_store: str, path_to_save: str, foreground_path: str=None, background_path: str = None,
+                       foreground_mask_path:str = None,
                        mask_ext: str = None, image_ext: str = None, name_val_match: dict = None, background_params: dict = None,
                        mask_path: str = "mask", image_path: str = "image"):
     """
@@ -437,9 +465,11 @@ def process_with_check(path_to_store: str, path_to_save: str, foreground_path: s
                     mask = cv2.rotate(mask, cv2.ROTATE_90_CLOCKWISE)
                 num = 0
                 ia = ImageArtification_self(foreground_folder_path=foreground_path, background_folder_path=background_path,
+                                            foreground_mask_path = foreground_mask_path,
                                             name_val_match=name_val_match,bg_param=background_params)
                 ia.get_params_dependent_on_targets(image, mask)
                 artfical, _ = artificate(image=ia.image, foregrounds=ia.all_foregrounds,
+                                         foreground_masks=ia.all_foreground_masks,
                                       artifical_background=ia.artificial_background,
                                       cnts=ia.coord_d, masks=ia.all_masks, ini_mask=mask,
                                          background_type=ia.chosen_bg,
@@ -507,20 +537,20 @@ if __name__ == "__main__":
                 # "./01032020",
                 # "./05032020",
                 # "./15042020",
-                "./What I've done/1",
-                "./What I've done/2",
-                "./What I've done/5",
-                "./What I've done/6",
-                "./What I've done/7",
-                "./What I've done/8",
-                "./What I've done/9",
-                "./What I've done/11",
-                "./What I've done/12",
-                "./29022020 что сделано/Большая площадь, скв. 297, Ящ. 1-12",
-                "./29022020 что сделано/Галяновская площадь, скв. 2631, Ящ. 1-13",
-                "./29022020 что сделано/Загадочные 86 коробок",
-                "./29022020 что сделано/Ольховское, скв. 301, Ящ. 1-9",
-                "./29022020 что сделано/Средне-Назымское, скв. 311, Ящ. 1-18",
+                # "./What I've done/1",
+                # "./What I've done/2",
+                # "./What I've done/5",
+                # "./What I've done/6",
+                # "./What I've done/7",
+                # "./What I've done/8",
+                # "./What I've done/9",
+                # "./What I've done/11",
+                # "./What I've done/12",
+                # "./29022020 что сделано/Большая площадь, скв. 297, Ящ. 1-12",
+                # "./29022020 что сделано/Галяновская площадь, скв. 2631, Ящ. 1-13",
+                # "./29022020 что сделано/Загадочные 86 коробок",
+                # "./29022020 что сделано/Ольховское, скв. 301, Ящ. 1-9",
+                # "./29022020 что сделано/Средне-Назымское, скв. 311, Ящ. 1-18",
                 "./Скв. 888-06, ящ. 1-40/"]
     image_path = "image/DL"
     mask_path = "mask"
@@ -533,7 +563,9 @@ if __name__ == "__main__":
             os.makedirs(save_store)
         process_with_check(path_to_store=storage, #"./examples/data_sample",#initial",#
                            path_to_save=save_store,#"D:/Local drive/Pycharm/TemplateArtification/examples/aug_sample",#",#
-                           foreground_path="D:/Local drive/Segmentation task//foreground",
-                           background_path="D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",#"./examples/backgrounds",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
+                           foreground_path="D:/Local drive/Segmentation task/foreground",
+                           foreground_mask_path="D:/Local drive/Segmentation task/foreground_mask",
+                           background_path="D:/OneDrive/Skoltech/Projects/Pythons_project/Database/"
+                                           "Processed_data/augs/background",#"./examples/backgrounds",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
                             name_val_match=segclass.name_id, background_params=background_parameters,
                            image_ext=".jpg", image_path=image_path)#mask_ext=".png",
