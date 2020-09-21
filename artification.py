@@ -336,7 +336,7 @@ def artificate(image, cnts, artifical_background=None, foregrounds=None,foregrou
                 logger.debug(("foregrounds[ind].shape", foregrounds[ind].shape))
                 artifical_image[y:y + h, x:x + w] = cv2.bitwise_or(roi, foregrounds[ind])
                 if not isinstance(foreground_masks[ind], type(None)):
-                    ini_mask[y:y + h, x:x + w] = foreground_masks[ind]
+                    ini_mask[y:y + h, x:x + w] = cv2.bitwise_and(foreground_masks[ind], mask[:, :, 0])
                 # real_image = image
             # print(x,y,w,h)
         if not isinstance(artifical_background, type(None)):
