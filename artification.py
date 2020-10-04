@@ -35,7 +35,7 @@ class ImageArtification_self:
 
     def __init__(self, background_folder_path:str=None, foreground_folder_path:str=None,foreground_mask_path:str=None,
                  flag=cv2.MIXED_CLONE, bg_param=None, fg_param=None, name_val_match=None,
-                 always_apply=True, p_b=1, p_f=1, p_f_freq=.7):
+                 always_apply=True, p_b=0, p_f=1, p_f_freq=.7):
         """
 
         :param background_folder_path:
@@ -428,12 +428,16 @@ def process_with_check(path_to_store: str, path_to_save: str, foreground_path: s
     :param name_val_match: foreground name - mask value match
     :return:
     """
+    logger = logging.getLogger("process_with_check")
     mask_path = os.path.join(path_to_store, mask_path)
     image_path = os.path.join(path_to_store, image_path)
     filelist_box = FolderIterator.get_file_list(mask_path, full_path=False)
     wrong = []
-    len(filelist_box)
+    # len(filelist_box)
 
+    logger.debug(("mask_path", mask_path))
+    logger.debug(("image_path", image_path))
+    logger.debug(("filelist_box", len(filelist_box), filelist_box))
     for path in tqdm(filelist_box):
         # print(mask_path, path)
         name = PathSupport.takename(path)[0]
@@ -451,6 +455,8 @@ def process_with_check(path_to_store: str, path_to_save: str, foreground_path: s
             h, w = image.shape[:2]
 
             if image.shape[:2] != mask.shape[:2]:
+                logger.debug(("image_name", image_name))
+                logger.debug(("Shapes are not equal!"))
                 wrong.append(path)
 
             # if image.shape[:2] != mask.shape[:2]:
@@ -503,6 +509,7 @@ def process_with_check(path_to_store: str, path_to_save: str, foreground_path: s
                 # shutil.move(os.path.join(image_path, path), os.path.join("D:/Local drive/Segmentation task/All_data/done", name))
                 num += 1
         else:
+            logger.debug(("path doesn't exists", os.path.join(image_path, image_name)))
             wrong.append(path)
 
     if len(wrong) > 0:
@@ -534,38 +541,37 @@ if __name__ == "__main__":
     main_path = "D:/Local drive/Segmentation task/Что сделано"
 
     subpaths = [
-                # "./01032020",
-                # "./05032020",
-                # "./15042020",
-                # "./What I've done/1",
-                # "./What I've done/2",
-                # "./What I've done/5",
-                # "./What I've done/6",
-                # "./What I've done/7",
-                # "./What I've done/8",
-                # "./What I've done/9",
-                # "./What I've done/11",
-                # "./What I've done/12",
-                # "./29022020 что сделано/Большая площадь, скв. 297, Ящ. 1-12",
-                # "./29022020 что сделано/Галяновская площадь, скв. 2631, Ящ. 1-13",
-                # "./29022020 что сделано/Загадочные 86 коробок",
-                # "./29022020 что сделано/Ольховское, скв. 301, Ящ. 1-9",
-                # "./29022020 что сделано/Средне-Назымское, скв. 311, Ящ. 1-18",
+                "./01032020",
+                "./05032020",
+                "./15042020",
+                "./What I've done/1",
+                "./What I've done/2",
+                "./What I've done/5",
+                "./What I've done/6",
+                "./What I've done/7",
+                "./What I've done/8",
+                "./What I've done/9",
+                "./What I've done/11",
+                "./What I've done/12",
+                "./29022020 что сделано/Большая площадь, скв. 297, Ящ. 1-12",
+                "./29022020 что сделано/Галяновская площадь, скв. 2631, Ящ. 1-13",
+                "./29022020 что сделано/Загадочные 86 коробок",
+                "./29022020 что сделано/Ольховское, скв. 301, Ящ. 1-9",
+                "./29022020 что сделано/Средне-Назымское, скв. 311, Ящ. 1-18",
                 "./Скв. 888-06, ящ. 1-40/"]
-    image_path = "image/DL"
-    mask_path = "mask"
-    for path in tqdm(subpaths):
-        storage = os.path.join(main_path, path)
-        assert os.path.exists(storage), ("Path doesn't exist:", storage)
-        # print(storage, os.path.exists(storage))
-        save_store = os.path.join("D:/Local drive/Segmentation task/augmented", path)
-        if not os.path.exists(save_store):
-            os.makedirs(save_store)
-        process_with_check(path_to_store=storage, #"./examples/data_sample",#initial",#
-                           path_to_save=save_store,#"D:/Local drive/Pycharm/TemplateArtification/examples/aug_sample",#",#
-                           foreground_path="D:/Local drive/Segmentation task/foreground",
-                           foreground_mask_path="D:/Local drive/Segmentation task/foreground_mask",
-                           background_path="D:/OneDrive/Skoltech/Projects/Pythons_project/Database/"
-                                           "Processed_data/augs/background",#"./examples/backgrounds",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
-                            name_val_match=segclass.name_id, background_params=background_parameters,
-                           image_ext=".jpg", image_path=image_path)#mask_ext=".png",
+    image_path = "image"#"image/DL"
+    # mask_path = "mask"
+    # for path in tqdm(subpaths):
+    storage = "D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/core_background/empty_create"  #os.path.join(main_path, path)# where images stored
+    assert os.path.exists(storage), ("Path doesn't exist:", storage)
+    # print(storage, os.path.exists(storage))
+    save_store = os.path.join("D:/Local drive/Segmentation task/augmented_new", "test")
+    if not os.path.exists(save_store):
+        os.makedirs(save_store)
+    process_with_check(path_to_store=storage, #"./examples/data_sample",#initial",#
+                       path_to_save=save_store,#"D:/Local drive/Pycharm/TemplateArtification/examples/aug_sample",#",#
+                       foreground_path= "C:/Users/ebara/Documents/extracts/image/",#"D:/Local drive/Segmentation task/foreground",
+                       foreground_mask_path= "C:/Users/ebara/Documents/extracts/mask/",#"D:/Local drive/Segmentation task/foreground_mask",
+                       background_path="D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",#"./examples/backgrounds",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
+                        name_val_match=segclass.name_id, background_params=background_parameters,
+                       image_ext=".jpg", image_path=image_path)#mask_ext=".png",
