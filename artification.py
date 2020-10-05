@@ -35,7 +35,7 @@ class ImageArtification_self:
 
     def __init__(self, background_folder_path:str=None, foreground_folder_path:str=None,foreground_mask_path:str=None,
                  flag=cv2.MIXED_CLONE, bg_param=None, fg_param=None, name_val_match=None,
-                 always_apply=True, p_b=0, p_f=1, p_f_freq=.7):
+                 always_apply=True, p_b=0, p_f=1, p_f_freq=.7, remove_empty=False, crop_by_mask=False):
         """
 
         :param background_folder_path:
@@ -48,6 +48,8 @@ class ImageArtification_self:
         :param p_b: background change probability
         :param p_f: foreground change probability
         :param p_f_freq: foreground change probability
+        :param remove_empty: remove a mask if the artification image is not sutible for the region
+        :param crop_by_mask: crops a foreground image with provided mask
         """
         self.logger = logging.getLogger("ImageArtification_self")
         self.background_folder = background_folder_path
@@ -77,6 +79,8 @@ class ImageArtification_self:
         self.p_f_freq = p_f_freq
         self.chosen_fg = None
         self.chosen_bg = None
+        self.remove_empty = remove_empty
+        self.crop_by_mask = crop_by_mask
 
     def proc_params(self, bg_param, fg_param):
         if not bg_param:
@@ -281,6 +285,12 @@ class ImageArtification_self:
 
                                 if self.arti_height*2 < h: #if the artificial height is larger then original height
                                     foreground = None
+                                    if self.remove_empty: # if we use some backgrounds were no image inside -
+                                                            # remove the mask from the background image
+                                        foreground = self.image[y:y + h, x:x + w].copy()
+                                        self.all_foreground_masks[ind] = np.zeros((h, w), dtype="uint8")
+
+
                                 else:
                                     if self.foreground_mask_path:
                                         chosen_mask_path = os.path.join(self.foreground_mask_path, self.chosen_fg)
@@ -294,6 +304,14 @@ class ImageArtification_self:
                                                 self.foreground_mask = IO.read(os.path.join(chosen_mask_path,
                                                                                                   find_mask[0]),
                                                                                flag=cv2.IMREAD_GRAYSCALE)
+                                                if self.crop_by_mask:
+                                                    rgb_temp = cv2.merge((self.foreground_mask,
+                                                                          self.foreground_mask,
+                                                                          self.foreground_mask))
+                                                    self.artificial_foreground = cv2.bitwise_and(
+                                                        self.artificial_foreground,
+                                                        rgb_temp)
+
                                             else:
                                                 self.foreground_mask = None
 
@@ -306,12 +324,31 @@ class ImageArtification_self:
                                 a_height, a_width = self.artificial_foreground.shape[:2]  # params['image'].shape[:2]
                                 artificial_mask = None
 
+                            elif self.remove_empty: # if we use some backgrounds were no image inside -
+                                                    # remove the mask from the background image
+                                self.all_foregrounds[ind] = self.image[y:y + h, x:x + w].copy()
+                                self.all_foreground_masks[ind] = np.zeros((h, w), dtype="uint8")
+
                         # else:
                         #     self.coords.append(coord)
 
 
 def artificate(image, cnts, artifical_background=None, foregrounds=None,foreground_masks=None,
-               masks=None, background_type=None, configs=None, ini_mask=None):
+               masks=None, background_type=None, configs=None, ini_mask=None, crop_by_mask=False):
+    """
+
+    :param image:
+    :param cnts:
+    :param artifical_background:
+    :param foregrounds:
+    :param foreground_masks:
+    :param masks:
+    :param background_type:
+    :param configs:
+    :param ini_mask:
+    :param crop_by_mask:
+    :return:
+    """
     # GUI_interaction.imgshow(artfical)
     # GUI_interaction.imgshow(image)
     logger = logging.getLogger("artificate")
@@ -323,6 +360,13 @@ def artificate(image, cnts, artifical_background=None, foregrounds=None,foregrou
             # e.g. take roi with core on the real image and change it to other core
             x, y, w, h = contour
             mask = masks[ind]
+            if crop_by_mask and foreground_masks:
+                if not isinstance(foreground_masks[ind], type(None)):
+                    mask = cv2.bitwise_and(mask,
+                                           cv2.merge((foreground_masks[ind],
+                                                     foreground_masks[ind],
+                                                     foreground_masks[ind])))
+
             logger.debug(("mask", mask))
             artifical = real_image[y:y + h, x:x + w]
             # GUI_interaction.imgshow(artifical)
@@ -331,13 +375,25 @@ def artificate(image, cnts, artifical_background=None, foregrounds=None,foregrou
             logger.debug(("mask_p", mask_p))
             roi = cv2.bitwise_and(artifical, mask_p)
             logger.debug(("roi.shape", roi.shape))
-            if not isinstance(foregrounds[ind], type(None)):
+            if not isinstance(foregrounds[ind], type(None)): # if there is some foreground (if it is not - the image shape wasn't good enough
                 logger.debug(("foregrounds[ind]", foregrounds[ind]))
                 logger.debug(("foregrounds[ind].shape", foregrounds[ind].shape))
+
                 artifical_image[y:y + h, x:x + w] = cv2.bitwise_or(roi, foregrounds[ind])
                 if not isinstance(foreground_masks[ind], type(None)):
+                    logger.debug(("foreground_masks[ind]", foreground_masks[ind]))
+                    logger.debug(("foreground_masks[ind].shape", foreground_masks[ind].shape))
+                    logger.debug(("mask[:, :, 0].shape", mask[:, :, 0].shape))
+
                     ini_mask[y:y + h, x:x + w] = cv2.bitwise_and(foreground_masks[ind], mask[:, :, 0])
                 # real_image = image
+            # if remove_empty and not isinstance(foreground_masks[ind], type(None)):
+            #     logger.debug(("foregrounds[ind]", foregrounds[ind]))
+            #     logger.debug(("foreground_masks[ind]", foreground_masks[ind]))
+            #     logger.debug(("foreground_masks[ind].shape", foreground_masks[ind].shape))
+            #     print("remove")
+            #     # artifical_image[y:y + h, x:x + w] = roi.copy()
+            #     ini_mask[y:y + h, x:x + w] = cv2.bitwise_and(foreground_masks[ind], mask[:, :, 0])
             # print(x,y,w,h)
         if not isinstance(artifical_background, type(None)):
             bottom_check = configs[background_type]["bottom"]
@@ -378,7 +434,6 @@ def artificate(image, cnts, artifical_background=None, foregrounds=None,foregrou
                 mask[mask > 0] = 255
                 mask = cv2.bitwise_not(mask)
                 roi = cv2.bitwise_and(roi, mask)
-
                 new_im = cv2.bitwise_or(roi, artifical_background)
                 artifical_image[y:fin_h, x:fin_w] = new_im
                 mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
@@ -392,12 +447,17 @@ def artificate(image, cnts, artifical_background=None, foregrounds=None,foregrou
             # real_image = artifical_background
             return artifical_image, ini_mask
 
+
+
     else:
         if not isinstance(artifical_background, type(None)):
+            logger.debug(("Processing without mask!"))
             for contour in cnts.values():
                 x, y, w, h = contour
                 artifical_background[y:y + h, x:x + w] = real_image[y:y + h, x:x + w]
                 artifical_image = artifical_background
+                # if remove_empty:
+                #     ini_mask[y:y + h, x:x + w] = cv2.bitwise_and(foreground_masks[ind], mask[:, :, 0])
         # GUI_interaction.imgshow(artfical)
     return artifical_image, None
 
@@ -417,7 +477,7 @@ def artificate_foreground(image, artfical, cnts):
 def process_with_check(path_to_store: str, path_to_save: str, foreground_path: str=None, background_path: str = None,
                        foreground_mask_path:str = None,
                        mask_ext: str = None, image_ext: str = None, name_val_match: dict = None, background_params: dict = None,
-                       mask_path: str = "mask", image_path: str = "image"):
+                       mask_path: str = "mask", image_path: str = "image", remove_empty=False, crop_by_mask=True):
     """
 
     :param path_to_store: where the initial images stored
@@ -472,14 +532,17 @@ def process_with_check(path_to_store: str, path_to_save: str, foreground_path: s
                 num = 0
                 ia = ImageArtification_self(foreground_folder_path=foreground_path, background_folder_path=background_path,
                                             foreground_mask_path = foreground_mask_path,
-                                            name_val_match=name_val_match,bg_param=background_params)
+                                            name_val_match=name_val_match,bg_param=background_params,
+                                            remove_empty=remove_empty,
+                                            crop_by_mask=crop_by_mask)
                 ia.get_params_dependent_on_targets(image, mask)
                 artfical, _ = artificate(image=ia.image, foregrounds=ia.all_foregrounds,
                                          foreground_masks=ia.all_foreground_masks,
                                       artifical_background=ia.artificial_background,
                                       cnts=ia.coord_d, masks=ia.all_masks, ini_mask=mask,
                                          background_type=ia.chosen_bg,
-                                         configs=background_params)
+                                         configs=background_params,
+                                         crop_by_mask=crop_by_mask)
                 #
                 if not isinstance(_, type(None)):
                     mask = _
@@ -570,8 +633,8 @@ if __name__ == "__main__":
         os.makedirs(save_store)
     process_with_check(path_to_store=storage, #"./examples/data_sample",#initial",#
                        path_to_save=save_store,#"D:/Local drive/Pycharm/TemplateArtification/examples/aug_sample",#",#
-                       foreground_path= "C:/Users/ebara/Documents/extracts/image/",#"D:/Local drive/Segmentation task/foreground",
-                       foreground_mask_path= "C:/Users/ebara/Documents/extracts/mask/",#"D:/Local drive/Segmentation task/foreground_mask",
+                       foreground_path="C:/Users/ebara/Documents/extracts/image/",#"D:/Local drive/Segmentation task/foreground",
+                       foreground_mask_path="C:/Users/ebara/Documents/extracts/mask/",#"D:/Local drive/Segmentation task/foreground_mask",
                        background_path="D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",#"./examples/backgrounds",#"D:/OneDrive/Skoltech/Projects/Pythons_project/Database/Processed_data/augs/background",
                         name_val_match=segclass.name_id, background_params=background_parameters,
-                       image_ext=".jpg", image_path=image_path)#mask_ext=".png",
+                       image_ext=".jpg", image_path=image_path, remove_empty=True)#mask_ext=".png",
